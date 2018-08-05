@@ -43,33 +43,44 @@ def readUserIds():
 	global userIds
 	with open(userIdsFile, "r") as infile:
 		subscriberJson = json.load(infile)
-		userIds = subscriberJson["subscribers"]
+		userIds = subscriberJson["userIds"]
 
 def saveUserIds(bot, job):
 	with open(userIdsFile, "w") as outfile:
 		finalJson = {}
-		finalJson["subscribers"] = userIds
+		finalJson["userIds"] = userIds
 		json.dump(finalJson, outfile)
 
 def newMember(bot, update):
 	send_message_retry(bot, update.message.chat_id, groupMsg)
 
 def addId(bot, update):
-	if update.message.text.split().size() < 2:
+	global userIds
+	splitText = update.message.text.split()
+
+	if len(splitText) < 2:
 		return
 
-	isPoke = update.message.text.split()[0] == "/pokego"
-	user = update.message['from']
+	isPoke = splitText[0] == "/pokego"
+	user = update.message.from_user
+	userIds[str(user.id)] = {}
+	
 	if isPoke:	
-		userIds[user['id']]['pokeCode'] = update.message['text'].split()[1]
+		userIds[str(user.id)]['pokeCode'] = splitText[1]
 	else:
-		userIds[user['id']]['switchCode'] = update.message['text'].split()[1]
+		userIds[str(user.id)]['switchCode'] = splitText[1]
 
-	if 'username' in user:
-		userIds[user['id']]['displayName'] = user['username']
+	if user.username:
+		userIds[str(user.id)]['displayName'] = "@"+user.username
 	else:
-		userIds[user['id']]['displayName'] = user['first_name'] + " " + user['last_name']
+		userIds[str(user.id)]['displayName'] = user.first_name + " " + user.last_name
 
+def showIds(bot, update):
+	message = "*Switch IDs do grupo*\n\n"
+	for userId, userInfo in userIds.items():
+		message += userInfo['displayName'] + ":\n" + userInfo['switchCode'] + "\n"	
+
+	send_message_retry(bot, update.message.chat_id, message)
 
 def main():
 	# First load our subscriber list if it exists:
@@ -81,7 +92,7 @@ def main():
 					format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 	
 	# Configure updater with our API token.
-	updater = Updater("Your API token should go here.")
+	updater = Updater("Insert your API key here")
 
 	# Create dispatcher and register commands.
 	dp = updater.dispatcher
@@ -89,6 +100,7 @@ def main():
 	dp.add_handler(CommandHandler("start", start))
 	dp.add_handler(CommandHandler("help", start))
 	dp.add_handler(CommandHandler("commands", start))
+	dp.add_handler(CommandHandler("ids", showIds))
 
 
 	dp.add_handler(MessageHandler(Filters.status_update.new_chat_members, newMember))
