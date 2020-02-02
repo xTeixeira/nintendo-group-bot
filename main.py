@@ -6,12 +6,13 @@ import re
 import os.path
 import json
 import time
-from functools import wraps
+import functools
 
 subscriberChat = "-groupid" #(So the chat id should go here)
 userIdsFile = "user-ids.json"
 userIds = {}
-groupMsg = "*Informações Sobre o Grupo*\n\nSejam Bem-Vindos!\n\nGrupo dedicado à seção Nintendo do Fórum Uol Jogos. Da nostalgia às jogatinas, não há muitas regras além de:\n\n1. Ambiente SFW (Safe for work. Sem pornô aqui)\n2. Discutir pode; xingar o coleguinha, não.\n3. Inatividade por 2 meses resulta em ban. Dá um oi, custa nada xD\n4. Quer divulgar algo? Participe! Venda ou sei lá, mas faça parte da comunidade.\n\nPara os novatos no Telegram, saibam que:\n\n5. Não é necessário compartilhar o número do celular para acessar o grupo. Utilizem um nick no seu perfil do Telegram.\n6. Prezamos pela privacidade. Novos usuários não poderão ler as mensagens antigas, além disso, haverá zero tolerância com trolls. \n7. Esta mensagem será constantemente atualizada com os IDs e o nick do pessoal, assim como o console/portátil que a pessoa tem.  \n\nO grupo conta ainda com dois posts de friend codes: um com a tag #FriendCodes e o outro, #PokemonGo. Envie o seu código para ser adicionado! \n\nPor fim, abaixo está o link para o Discord, o que torna mais fácil marcar jogatinas e conversar por voz.\n\n*Discord do Grupo:*\nhttps://discord.gg/nE7hzh7"
+groupMsg = "INFORMAÇÕES SOBRE O GRUPO\n\nSejam Bem-Vindos!\n\nGrupo para gamers, especialmente os apaixonados por Nintendo!\n\n1. Ambiente SFW (Safe for work. Sem pornô e gore aqui.)\n2. Discutir pode; xingar o coleguinha, não.\n3. Divulgue apenas se você postar com frequência.\n4. Temos lista de Switch Codes. Só pedir e enviar o código paraseradicionado.\n\nCanal de Notícias:\nhttps://t.me/joinchat/AAAAAFDiOImvA-VCqj63hQ\n.\nSubreddit:\nReddit.com/r/Switch_Brasil\n.\nDiscord:\nhttps://discord.gg/UXpZHaj\n"
+commandsHelpMsg = "Para adicionar um Friend Code use o comando:\n/addCode <friend-code>\n\nex: /addCode SW-1234-546A-53SD"
 
 def send_message_retry(bot, chat_id, message, retries=5):
 	for nretries in range(retries):
@@ -35,9 +36,8 @@ def send_photo_retry(bot, chat_id, photo_path, retries=5):
 	
 	raise TimedOut
 
-def start(bot, update):
-	update.message.reply_text(
-		"Todo: make start message")
+def showCommandsHelp(update):
+	update.message.reply_text(commandsHelpMsg)
 
 def readUserIds():
 	global userIds
@@ -50,37 +50,81 @@ def saveUserIds(bot, job):
 		finalJson = {}
 		finalJson["userIds"] = userIds
 		json.dump(finalJson, outfile)
+		
+### COMMAND HANDLERS ###
+
+def start(bot, update):
+	update.message.reply_text(groupMsg)
+
+def showCommands(bot, update):
+	commands = "Comandos:\n"
+	commands += "/start\n"
+	commands += "/commands\n\n"
+
+	commands += "/showCodes" + " - mostrar friend codes\n"
+	commands += "/addCode <friend-code>" + " - adicionar código do seu usuário\n"
+	commands += "/removeCode <friend-code>" + "- remover código do seu usuário\n\n"
+
+	update.message.reply_text(commands)
 
 def newMember(bot, update):
 	send_message_retry(bot, update.message.chat_id, groupMsg)
 
-def addId(bot, update):
+def setId(bot, update):
 	global userIds
+
+	if not update.message or not update.message.text:
+		showCommandsHelp(update)
+		return
+
 	splitText = update.message.text.split()
 
 	if len(splitText) < 2:
+		showCommandsHelp(update)
 		return
 
-	isPoke = splitText[0] == "/pokego"
+	code = splitText[1]
+
 	user = update.message.from_user
-	userIds[str(user.id)] = {}
-	
-	if isPoke:	
-		userIds[str(user.id)]['pokeCode'] = splitText[1]
-	else:
-		userIds[str(user.id)]['switchCode'] = splitText[1]
+	userId = str(user.id)
 
 	if user.username:
-		userIds[str(user.id)]['displayName'] = "@"+user.username
+		username = "@"+user.username
 	else:
-		userIds[str(user.id)]['displayName'] = user.first_name + " " + user.last_name
+		username = user.first_name + " " + user.last_name
 
-def showIds(bot, update):
-	message = "*Switch IDs do grupo*\n\n"
+	if userId not in userIds:
+		userIds[userId] = {}
+
+	setIdInList(userId, code, username)
+
+	send_message_retry(bot, update.message.chat_id, "Código adicionado com sucesso!")
+
+def removeId(bot, update):
+	global userIds
+	user = update.message.from_user
+	userId = (str(user.id))
+
+	if userId in userIds:
+		setIdInList(userId, None, userIds[userId]["displayName"])
+		send_message_retry(bot, update.message.chat_id, "Código removido com sucesso!")
+	else:
+		send_message_retry(bot, update.message.chat_id, "Não há este tipo de código registrado!")
+
+def showIds(bot, update):	
+	global userIds
+
+	message = "*Switch Friend Codes*\n\n"
 	for userId, userInfo in userIds.items():
-		message += userInfo['displayName'] + ":\n" + userInfo['switchCode'] + "\n"	
+		if userInfo["switchCode"]:
+			message += userInfo['displayName'] + ": " + userInfo["switchCode"] + "\n========\n"
 
 	send_message_retry(bot, update.message.chat_id, message)
+
+def setIdInList(userId, code, username):
+	global userIds
+	userIds[userId]["displayName"] = username
+	userIds[userId]["switchCode"] = code
 
 def main():
 	# First load our subscriber list if it exists:
@@ -92,20 +136,21 @@ def main():
 					format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 	
 	# Configure updater with our API token.
-	updater = Updater("Insert your API key here")
+	updater = Updater("API-TOKEN")
 
 	# Create dispatcher and register commands.
 	dp = updater.dispatcher
 
 	dp.add_handler(CommandHandler("start", start))
 	dp.add_handler(CommandHandler("help", start))
-	dp.add_handler(CommandHandler("commands", start))
-	dp.add_handler(CommandHandler("ids", showIds))
+	dp.add_handler(CommandHandler("commands", showCommands))
 
 
 	dp.add_handler(MessageHandler(Filters.status_update.new_chat_members, newMember))
-	dp.add_handler(CommandHandler("addid", addId))
-	dp.add_handler(CommandHandler("addpoke", addId))
+
+	dp.add_handler(CommandHandler("addCode", setId))
+	dp.add_handler(CommandHandler("removeCode", removeId))
+	dp.add_handler(CommandHandler("showCodes", showIds))
 
 	# Create scheduled job for saving the subscriber list to disk every minute.
 	userIdsSavingJob = updater.job_queue.run_repeating(saveUserIds, interval=60, first=60)
